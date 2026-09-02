@@ -1,24 +1,26 @@
-import logo from './logo.svg';
-import './App.css';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import AppShell from './layouts/AppShell';
+import DashboardPage from './pages/DashboardPage';
+import JobsListPage from './pages/jobs/JobsListPage';
+import JobDetailPage from './pages/jobs/JobDetailPage';
+import NewJobPage from './pages/jobs/NewJobPage';
+import GetPaidPage from './pages/get-paid/GetPaidPage';
+import NotFoundPage from './pages/NotFoundPage';
 
 function App() {
   return (
-    <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.js</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
-    </div>
+    <BrowserRouter>
+      <Routes>
+        <Route element={<AppShell />}>
+          <Route index element={<DashboardPage />} />
+          <Route path="jobs" element={<JobsListPage />} />
+          <Route path="jobs/new" element={<NewJobPage />} />
+          <Route path="jobs/:jobId" element={<JobDetailPage />} />
+          <Route path="get-paid" element={<GetPaidPage />} />
+          <Route path="*" element={<NotFoundPage />} />
+        </Route>
+      </Routes>
+    </BrowserRouter>
   );
 }
 
