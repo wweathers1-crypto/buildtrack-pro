@@ -1,0 +1,106 @@
+# BuildTrackPro — Get Paid Module: SC/NC Lien Waiver Spec
+
+**Purpose:** Reference spec for building lien waiver tracking and generation, extending the existing Get Paid module (which already covers lien filing deadlines). Sourced from current statutes and legal-industry publications as of 2026. This is a development spec, not a substitute for the attorney review still required before launch.
+
+**Relationship to the existing lien-deadline spec:** A mechanic's lien *deadline* protects a contractor when they are *not* paid. A lien *waiver* is the opposite direction — it's a document the contractor signs to confirm they release their lien rights *because* they *were* paid. Both belong under the Get Paid module, and a payment logged in the app is the natural trigger point for a waiver.
+
+---
+
+## 1. What a Lien Waiver Is
+
+A lien waiver is a document — signed by whoever could file a lien (contractor, subcontractor, supplier) — stating that lien rights are given up, in whole or in part, in exchange for payment. Owners and GCs collect these to protect themselves from paying twice (once to the sub, once to satisfy a lien if the sub wasn't actually paid by the party above them).
+
+**Four standard waiver types (same categories in both SC and NC):**
+
+| Type | Used when | Effective when |
+|---|---|---|
+| Partial Conditional | Progress payment expected, not yet received | Only once the payment actually clears |
+| Partial Unconditional | Progress payment has been received | Immediately upon signing |
+| Final Conditional | Final payment expected, not yet received | Only once final payment clears |
+| Final Unconditional | Final payment has been received (including retainage) | Immediately upon signing |
+
+**The core rule in both states:** never sign/issue an *unconditional* waiver before the money has actually cleared. Conditional is always the safer default when payment is pending.
+
+---
+
+## 2. South Carolina — Rules
+
+- **No statutory form required** — any written waiver document is acceptable.
+- **Both conditional and unconditional waivers are allowed**, as long as the waiver is exchanged only after the associated payment.
+- **No notarization required**, unless the client specifically asks for it.
+- **Cannot waive lien rights in the contract itself** or before payment — S.C. Code prohibits pre-payment waiver clauses.
+- **Real teeth for bad-faith GCs:** if a GC fails to pay a lower-tier contractor and falsely represents that payment was made in full, that is a **misdemeanor** under SC law — worth surfacing in the UI as a genuine protection, not just a formality.
+- Arbitration is available as a right for all parties to a construction contract.
+
+**Engine implication:** SC needs no special validation logic beyond the universal rule (no unconditional waiver before payment is logged as received).
+
+---
+
+## 3. North Carolina — Rules
+
+- **No statutory form required** — same as SC, any written waiver is acceptable.
+- **Both conditional and unconditional waivers are allowed.**
+- **No notarization required**, unless requested.
+- **Cannot waive lien rights "in anticipation of and in consideration for the awarding of any contract"** (N.C. Gen. Stat. §44-A12) — i.e., no waiving future/unearned lien rights as a pre-condition of getting hired.
+- **§22B-5 (effective March 1, 2022) — the piece that makes NC different from SC:**
+  - Voids any **broad or "final" waiver demanded as a condition of a mere progress payment.** A GC cannot require a subcontractor to sign away *all* lien rights for the *entire* project in exchange for a check that only covers *part* of the work.
+  - **The label on the document does not control.** Calling something "unconditional" does not override this statutory protection — if it functions as a final/broad waiver tied to a partial payment, it's void regardless of what it's titled.
+  - **A true final waiver is only valid once ALL payments — including retainage — have actually been made.** It cannot be demanded mid-project.
+
+**Engine implication — the one genuinely state-specific validation rule to build:**
+> If `waiverType === "final"` AND the associated payment is a **progress** payment (not the last/full payment on the job) AND state === "NC" → flag as **void under §22B-5**, block generation, and show the user why.
+
+This is the single most important piece of state-specific logic in this module — it directly prevents users from generating a legally void document without knowing it.
+
+---
+
+## 4. Side-by-Side Comparison
+
+| | South Carolina | North Carolina |
+|---|---|---|
+| Statutory form required? | No | No |
+| Conditional/unconditional both allowed? | Yes | Yes |
+| Notarization required? | No (unless requested) | No (unless requested) |
+| Pre-payment waiver in contract? | Prohibited | Prohibited (pre-contract-award waivers specifically barred) |
+| Final waiver tied to a progress payment? | Not specifically addressed by statute | **Void under §22B-5, regardless of label** |
+| Criminal exposure for false "paid in full" claims? | Yes — misdemeanor | Not indicated in sources reviewed |
+
+---
+
+## 5. Data Model Additions
+
+Extends the existing `Job` / Get Paid structures — does not require a new top-level entity, just a `waivers` array tied to jobs and payments.
+
+| Field | Notes |
+|---|---|
+| Waiver type | Partial Conditional / Partial Unconditional / Final Conditional / Final Unconditional |
+| Associated payment | Link to the specific payment/pay-app entry that triggered this waiver |
+| Amount | Should match the associated payment amount |
+| Through date | The date through which work/payment is covered — required for scope precision, especially relevant for NC where scope disputes are the most common waiver problem |
+| Status | Drafted / Sent / Signed / Received |
+| Is this a final waiver? | Boolean — drives the NC §22B-5 check |
+| Is the associated payment the final payment on the job? | Boolean — drives the NC §22B-5 check |
+
+---
+
+## 6. Suggested Build Approach
+
+1. **Trigger point:** whenever a payment is logged in the existing Get Paid invoice/payment tracker, prompt: "Generate a lien waiver for this payment?"
+2. **Type selection:** default to Conditional if payment hasn't cleared yet in the app's records; allow switching to Unconditional once marked received.
+3. **NC validation:** run the §22B-5 check described in §3 before allowing a "Final" waiver to be generated against anything other than the job's actual final payment.
+4. **Document generation:** simple templated document (no statutory form to match in either state) — party names, project info, amount, through-date, waiver type, signature lines.
+5. **Status tracking:** a simple list view per job — which waivers are outstanding, which are signed/received — mirrors the existing lien-deadline tracker's pattern.
+
+---
+
+## 7. Pre-Launch Checklist
+
+- [ ] Attorney review of waiver document templates (both states)
+- [ ] Confirm the NC §22B-5 validation logic correctly identifies "final waiver + progress payment" scenarios
+- [ ] Confirm SC misdemeanor-exposure messaging is accurate and appropriately worded (informational, not legal advice)
+- [ ] ToS/disclaimer language extended to cover waiver generation, same as lien-deadline tracking: compliance aid, not legal advice
+- [ ] Test cases: NC final-waiver-on-progress-payment (should block), SC unconditional-before-payment (should warn), through-date scope-of-work matching
+
+---
+
+*Sources reviewed: S.C. Code §29-5-10 et seq.; N.C. Gen. Stat. §44-A12, §22B-5 (effective March 1, 2022); industry legal publications (Levelset, Siteline, Handle, Built, MegaDox, US Legal Forms) current as of 2026. This document reflects publicly available secondary-source summaries of statute, not primary legal research — attorney verification against current statutory text is required before any waiver logic or template ships to customers.*
